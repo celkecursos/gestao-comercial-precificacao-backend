@@ -455,3 +455,12 @@ Checklist de segurança para produção: `JWT_SECRET` exclusivo e forte, `DB_SEE
 | `npm run seed`                | Dados de demonstração                              |
 | `npm run migration:run:prod`  | Migrations a partir do build (produção)            |
 | `npm run seed:prod`           | Seed a partir do build (produção, exige `--force`) |
+
+## Autor
+
+Desenvolvido por [Cesar Szpak](https://celke.com.br) — [Celke
+Cursos](https://github.com/celkecursos).
+
+## Licença
+
+MIT — veja o arquivo [LICENSE](LICENSE.txt) para detalhes.
