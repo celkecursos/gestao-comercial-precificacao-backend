@@ -5,6 +5,7 @@ Convenções deste repositório. Siga-as ao implementar qualquer tarefa.
 ## Antes de começar
 
 - Leia `README.md`, `docs/ARCHITECTURE.md` e `docs/ROADMAP.md`.
+- Configuração do Paperclip, agentes e tarefas em andamento: `docs/PAPERCLIP.md`.
 - Ambiente: `npm install`, `.env` a partir do `.env.example`, `docker compose up -d mysql`, `npm run db:setup`.
 
 ## Branches

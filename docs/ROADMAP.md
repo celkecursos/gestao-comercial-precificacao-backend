@@ -4,7 +4,7 @@ Funcionalidades planejadas e ainda **não implementadas**.
 
 ## Recuperação de senha por e-mail
 
-**Status:** não implementada — será desenvolvida como tarefa no Paperclip.
+**Status:** não implementada — será desenvolvida como tarefa no Paperclip (configuração e prompt da tarefa em [PAPERCLIP.md](PAPERCLIP.md)).
 
 **Objetivo:** permitir que um usuário que esqueceu a senha solicite um link de redefinição por e-mail e defina uma nova senha sem estar autenticado.
 
