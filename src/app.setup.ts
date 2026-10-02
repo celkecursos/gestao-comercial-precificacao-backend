@@ -18,6 +18,13 @@ export const SWAGGER_PATH = 'api/docs';
 export function configureApp(app: INestApplication): void {
   const config = app.get(ConfigService<EnvironmentVariables, true>);
 
+  // A Hostinger encaminha o IP original no primeiro proxy confiável.
+  // Isso faz request.ip refletir o cliente, usado no limite de recuperação.
+  const expressApp = app.getHttpAdapter().getInstance() as unknown as {
+    set(setting: string, value: number): void;
+  };
+  expressApp.set('trust proxy', 1);
+
   app.enableCors({
     origin: parseOrigins(config.get('FRONTEND_URL', { infer: true })),
     credentials: true,

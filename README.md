@@ -473,3 +473,5 @@ A recuperação usa dois endpoints públicos:
 - `POST /auth/reset-password` com `{ "token": "...", "newPassword": "NovaSenha@2026" }`. O token expira, é de uso único e uma nova solicitação invalida tokens anteriores.
 
 A API persiste somente o hash SHA-256 do token. Configure `FRONTEND_RESET_PASSWORD_URL` e `PASSWORD_RESET_TOKEN_TTL_MINUTES` (padrão: 30). O envio usa `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD` e `SMTP_FROM`. Em produção, a configuração SMTP é obrigatória; fora de produção, sem SMTP configurado, o link é registrado no log.
+
+O limite de solicitações considera o IP original encaminhado pelo primeiro proxy confiável da Hostinger (`trust proxy = 1`).

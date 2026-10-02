@@ -41,6 +41,11 @@ describe('API (e2e)', () => {
     app = moduleRef.createNestApplication();
     configureApp(app);
     await app.init();
+
+    const expressApp = app.getHttpAdapter().getInstance() as {
+      get(setting: string): unknown;
+    };
+    expect(expressApp.get('trust proxy')).toBe(1);
   });
 
   afterAll(async () => {
