@@ -61,6 +61,7 @@ describe('AuthService', () => {
     jwtService = { signAsync: jest.fn().mockResolvedValue('signed-token') };
     resetTokens = createRepositoryMock<PasswordResetToken>();
     resetTokens.findOneBy = jest.fn();
+    resetTokens.update = jest.fn().mockResolvedValue({ affected: 1 });
     emailService = { sendPasswordReset: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
@@ -247,8 +248,10 @@ describe('AuthService', () => {
         7,
         'NovaSenha@2026',
       );
-      expect(record.usedAt).toBeInstanceOf(Date);
-      expect(resetTokens.save).toHaveBeenCalledWith(record);
+      expect(resetTokens.update).toHaveBeenCalledWith(
+        { id: 1, usedAt: expect.anything() },
+        { usedAt: expect.any(Date) },
+      );
     });
 
     it.each([

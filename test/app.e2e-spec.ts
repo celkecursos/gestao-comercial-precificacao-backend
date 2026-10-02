@@ -417,7 +417,7 @@ describe('API (e2e)', () => {
       ]),
     );
     expect(values).toEqual({
-      users: 4, // 2 do seed + 2 criados nestes testes
+      users: 5, // 2 do seed + 3 criados nestes testes
       products: 5,
       quotations: 11,
       pricingFormulas: 4,

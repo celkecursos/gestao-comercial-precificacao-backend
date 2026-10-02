@@ -10,7 +10,10 @@ export class PasswordResetToken extends AppBaseEntity {
   userId: number;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'user_id' })
+  @JoinColumn({
+    name: 'user_id',
+    foreignKeyConstraintName: 'FK_password_reset_tokens_user_id',
+  })
   user: User;
 
   /** SHA-256 do token; o token em texto puro nunca é persistido. */

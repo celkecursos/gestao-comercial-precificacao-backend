@@ -3,6 +3,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -25,8 +26,15 @@ import { PasswordResetToken } from './entities/password-reset-token.entity';
 export const FORGOT_PASSWORD_MESSAGE =
   'Se o e-mail estiver cadastrado e ativo, enviaremos as instruções para redefinir a senha.';
 
+/**
+ * Regras de autenticação e de gerenciamento da própria conta.
+ *
+ * Futuras funcionalidades de conta (ex.: recuperação de senha por e-mail) devem ser
+ * adicionadas neste módulo, reutilizando `UsersService.updatePassword()`.
+ */
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private readonly forgotAttempts = new Map<string, number[]>();
 
   constructor(
@@ -43,13 +51,18 @@ export class AuthService {
     const user = await this.usersService.findByEmailWithPassword(email);
     const passwordMatches =
       !!user && (await this.passwordService.compare(password, user.password));
+
     if (!user || !passwordMatches) {
       throw new UnauthorizedException('E-mail ou senha inválidos.');
     }
-    if (!user.active) throw new UnauthorizedException('Usuário inativo.');
+    if (!user.active) {
+      throw new UnauthorizedException('Usuário inativo.');
+    }
+
     return this.issueToken(await this.usersService.findOne(user.id));
   }
 
+  /** Invalida todos os tokens emitidos para o usuário (o JWT é stateless). */
   async logout(userId: number): Promise<void> {
     await this.usersService.incrementTokenVersion(userId);
   }
@@ -62,22 +75,29 @@ export class AuthService {
     return this.usersService.update(userId, dto, userId);
   }
 
+  /**
+   * Altera a senha do usuário autenticado. Os tokens anteriores são invalidados
+   * e um novo token é retornado para manter a sessão atual.
+   */
   async changePassword(
     userId: number,
     { currentPassword, newPassword }: ChangePasswordDto,
   ): Promise<AuthResponseDto> {
     const user = await this.usersService.findOneWithPassword(userId);
+
     const currentMatches = await this.passwordService.compare(
       currentPassword,
       user.password,
     );
-    if (!currentMatches)
+    if (!currentMatches) {
       throw new BadRequestException('A senha atual está incorreta.');
+    }
     if (currentPassword === newPassword) {
       throw new BadRequestException(
         'A nova senha deve ser diferente da senha atual.',
       );
     }
+
     await this.usersService.updatePassword(userId, newPassword);
     return this.issueToken(await this.usersService.findOne(userId));
   }
@@ -109,10 +129,19 @@ export class AuthService {
     const baseUrl = this.config.get('FRONTEND_RESET_PASSWORD_URL', {
       infer: true,
     });
-    await this.emailService.sendPasswordReset(
-      user.email,
-      `${baseUrl}?token=${encodeURIComponent(token)}`,
-    );
+
+    try {
+      await this.emailService.sendPasswordReset(
+        user.email,
+        `${baseUrl}?token=${encodeURIComponent(token)}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Falha ao enviar e-mail de recuperação para o usuário ${user.id}.`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
+
     return { message: FORGOT_PASSWORD_MESSAGE };
   }
 
@@ -131,19 +160,36 @@ export class AuthService {
     if (record.expiresAt.getTime() <= Date.now()) {
       throw new BadRequestException('Token de recuperação expirado.');
     }
+
+    const useResult = await this.resetTokens.update(
+      { id: record.id, usedAt: IsNull() },
+      { usedAt: new Date() },
+    );
+    if (useResult.affected !== 1) {
+      throw new BadRequestException('Token de recuperação já utilizado.');
+    }
+
     await this.usersService.updatePassword(record.userId, newPassword);
-    record.usedAt = new Date();
-    await this.resetTokens.save(record);
     return { message: 'Senha redefinida com sucesso.' };
   }
 
   private checkForgotPasswordRateLimit(email: string, ip: string): void {
     const now = Date.now();
     const windowMs = 15 * 60_000;
-    for (const key of [`email:${email}`, `ip:${ip}`]) {
-      const attempts = (this.forgotAttempts.get(key) ?? []).filter(
+
+    for (const [key, attemptTimes] of this.forgotAttempts) {
+      const activeAttempts = attemptTimes.filter(
         (time) => now - time < windowMs,
       );
+      if (activeAttempts.length === 0) {
+        this.forgotAttempts.delete(key);
+      } else if (activeAttempts.length !== attemptTimes.length) {
+        this.forgotAttempts.set(key, activeAttempts);
+      }
+    }
+
+    for (const key of [`email:${email}`, `ip:${ip}`]) {
+      const attempts = this.forgotAttempts.get(key) ?? [];
       if (attempts.length >= 5) {
         throw new HttpException(
           'Muitas solicitações de recuperação. Tente novamente mais tarde.',
@@ -166,6 +212,7 @@ export class AuthService {
       role: user.role,
       tv: user.tokenVersion,
     };
+
     return {
       accessToken: await this.jwtService.signAsync(payload),
       tokenType: 'Bearer',
