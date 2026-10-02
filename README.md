@@ -464,3 +464,12 @@ Cursos](https://github.com/celkecursos).
 ## Licença
 
 MIT — veja o arquivo [LICENSE](LICENSE.txt) para detalhes.
+
+## Recuperação de senha
+
+A recuperação usa dois endpoints públicos:
+
+- `POST /auth/forgot-password` com `{ "email": "usuario@empresa.com.br" }`. A resposta é sempre genérica, exista ou não a conta. Há limite de 5 solicitações por e-mail e IP a cada 15 minutos.
+- `POST /auth/reset-password` com `{ "token": "...", "newPassword": "NovaSenha@2026" }`. O token expira, é de uso único e uma nova solicitação invalida tokens anteriores.
+
+A API persiste somente o hash SHA-256 do token. Configure `FRONTEND_RESET_PASSWORD_URL` e `PASSWORD_RESET_TOKEN_TTL_MINUTES` (padrão: 30). O envio usa `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD` e `SMTP_FROM`. Em produção, a configuração SMTP é obrigatória; fora de produção, sem SMTP configurado, o link é registrado no log.

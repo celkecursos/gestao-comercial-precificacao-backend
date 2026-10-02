@@ -1,10 +1,10 @@
 # Roadmap
 
-Funcionalidades planejadas e ainda **não implementadas**.
+Funcionalidades planejadas e evolução do produto.
 
 ## Recuperação de senha por e-mail
 
-**Status:** não implementada — será desenvolvida como tarefa no Paperclip (configuração e prompt da tarefa em [PAPERCLIP.md](PAPERCLIP.md)).
+**Status:** implementada.
 
 **Objetivo:** permitir que um usuário que esqueceu a senha solicite um link de redefinição por e-mail e defina uma nova senha sem estar autenticado.
 
@@ -16,13 +16,7 @@ Funcionalidades planejadas e ainda **não implementadas**.
 - `AuthModule` — local indicado para as novas rotas e regras.
 - Formato padrão de erros, Swagger, migrations e testes e2e prontos para receber a nova funcionalidade.
 
-**O que ainda não existe (a ser criado pela tarefa):**
-
-- serviço de envio de e-mail e sua configuração (variáveis no `.env.example`);
-- armazenamento de tokens de redefinição (entidade + migration), com expiração e uso único;
-- endpoints públicos de solicitação e de redefinição;
-- testes unitários e e2e do fluxo;
-- documentação no README e no Swagger.
+**Entregue:** envio por SMTP (com fallback de log fora de produção), tokens com hash, expiração e uso único, endpoints públicos, limitação de tentativas, Swagger e testes unitários/e2e.
 
 ## Integração com a LME
 

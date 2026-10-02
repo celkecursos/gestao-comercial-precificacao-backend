@@ -143,6 +143,64 @@ export class EnvironmentVariables {
   @Max(15)
   BCRYPT_SALT_ROUNDS = 10;
 
+  @IsString()
+  @IsNotEmpty()
+  FRONTEND_RESET_PASSWORD_URL = 'http://localhost:5173/reset-password';
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1440)
+  PASSWORD_RESET_TOKEN_TTL_MINUTES = 30;
+
+  @Transform(optionalText)
+  @ValidateIf(
+    (env: EnvironmentVariables) =>
+      Boolean(env.SMTP_HOST) || env.NODE_ENV === Environment.Production,
+  )
+  @IsString()
+  @IsNotEmpty()
+  SMTP_HOST?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(65535)
+  SMTP_PORT = 587;
+
+  @Transform(toBoolean)
+  @IsBoolean()
+  SMTP_SECURE = false;
+
+  @Transform(optionalText)
+  @ValidateIf(
+    (env: EnvironmentVariables) =>
+      Boolean(env.SMTP_HOST) || env.NODE_ENV === Environment.Production,
+  )
+  @IsString()
+  @IsNotEmpty()
+  SMTP_USER?: string;
+
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' && value !== '' ? value : undefined,
+  )
+  @ValidateIf(
+    (env: EnvironmentVariables) =>
+      Boolean(env.SMTP_HOST) || env.NODE_ENV === Environment.Production,
+  )
+  @IsString()
+  @IsNotEmpty()
+  SMTP_PASSWORD?: string;
+
+  @Transform(optionalText)
+  @ValidateIf(
+    (env: EnvironmentVariables) =>
+      Boolean(env.SMTP_HOST) || env.NODE_ENV === Environment.Production,
+  )
+  @IsString()
+  @IsNotEmpty()
+  SMTP_FROM?: string;
+
   @Transform(toBoolean)
   @IsBoolean()
   SWAGGER_ENABLED = true;

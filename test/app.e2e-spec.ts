@@ -1,8 +1,12 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { createHash } from 'node:crypto';
+import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
+import { EmailService } from '../src/auth/email.service';
+import { PasswordResetToken } from '../src/auth/entities/password-reset-token.entity';
 import { configureApp } from '../src/app.setup';
 import { DEMO_PASSWORD } from '../src/database/seeds/seed-data';
 
@@ -14,6 +18,7 @@ describe('API (e2e)', () => {
   let app: INestApplication<App>;
   let adminToken: string;
   let userToken: string;
+  const emailService = { sendPasswordReset: jest.fn() };
 
   const http = () => request(app.getHttpServer());
   const login = async (email: string, password = DEMO_PASSWORD) => {
@@ -28,7 +33,10 @@ describe('API (e2e)', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(EmailService)
+      .useValue(emailService)
+      .compile();
 
     app = moduleRef.createNestApplication();
     configureApp(app);
@@ -145,6 +153,74 @@ describe('API (e2e)', () => {
     it('POST /auth/logout invalida o token', async () => {
       await http().post('/auth/logout').set(bearer(token)).expect(204);
       await http().get('/auth/me').set(bearer(token)).expect(401);
+    });
+  });
+
+  describe('Recuperação de senha', () => {
+    const email = 'recuperacao.e2e@empresa.com.br';
+
+    beforeAll(async () => {
+      await http()
+        .post('/users')
+        .set(bearer(adminToken))
+        .send({ name: 'Recuperação E2E', email, password: 'Senha@123' })
+        .expect(201);
+    });
+
+    const requestResetToken = async () => {
+      emailService.sendPasswordReset.mockClear();
+      const { body } = await http()
+        .post('/auth/forgot-password')
+        .send({ email })
+        .expect(200);
+      expect(body.message).toContain('Se o e-mail estiver cadastrado');
+      const link = emailService.sendPasswordReset.mock.calls[0][1] as string;
+      return new URL(link).searchParams.get('token') as string;
+    };
+
+    it('mantém resposta genérica para e-mail inexistente sem enviar mensagem', async () => {
+      emailService.sendPasswordReset.mockClear();
+      const { body } = await http()
+        .post('/auth/forgot-password')
+        .send({ email: 'inexistente@empresa.com.br' })
+        .expect(200);
+      expect(body.message).toContain('Se o e-mail estiver cadastrado');
+      expect(emailService.sendPasswordReset).not.toHaveBeenCalled();
+    });
+
+    it('solicita por endpoint público, envia link e redefine a senha', async () => {
+      const token = await requestResetToken();
+      await http()
+        .post('/auth/reset-password')
+        .send({ token, newPassword: 'NovaSenha@456' })
+        .expect(200);
+      await login(email, 'NovaSenha@456');
+      await http()
+        .post('/auth/reset-password')
+        .send({ token, newPassword: 'OutraSenha@789' })
+        .expect(400);
+    });
+
+    it('rejeita senha fraca', async () => {
+      const token = await requestResetToken();
+      await http()
+        .post('/auth/reset-password')
+        .send({ token, newPassword: 'fraca' })
+        .expect(400);
+    });
+
+    it('rejeita token expirado', async () => {
+      const token = await requestResetToken();
+      const repository = app.get(DataSource).getRepository(PasswordResetToken);
+      await repository.update(
+        { tokenHash: createHash('sha256').update(token).digest('hex') },
+        { expiresAt: new Date(Date.now() - 60_000) },
+      );
+      const { body } = await http()
+        .post('/auth/reset-password')
+        .send({ token, newPassword: 'OutraSenha@789' })
+        .expect(400);
+      expect(body.message).toContain('expirado');
     });
   });
 
