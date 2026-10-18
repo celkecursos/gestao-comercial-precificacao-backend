@@ -38,6 +38,7 @@ E, se houver alteração de entidades, quando `npm run typeorm -- migration:gene
 - **Senhas:** sempre via `PasswordService` e `UsersService.updatePassword()`; validação com `@IsStrongPassword()`.
 - **Swagger:** toda rota tem `@ApiOperation`, resposta de sucesso tipada e `@ApiErrorResponses(...)`.
 - **Configuração:** nova variável de ambiente → declarar em `src/config/env.validation.ts` e no `.env.example`. Nunca coloque segredos no código.
+- **Testes:** o padrão dos unitários e dos e2e está em `.claude/rules/` (`unit-tests.md`, `e2e.md`); para criar, use `/criar-teste-unitario <modulo>` e `/criar-teste-e2e <modulo>`.
 
 ## Checklist para um novo módulo
 
