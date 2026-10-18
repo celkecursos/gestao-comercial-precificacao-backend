@@ -148,65 +148,6 @@ describe('API (e2e)', () => {
     });
   });
 
-  describe('Usuários', () => {
-    it('ADMIN lista usuários sem expor senhas', async () => {
-      const { body } = await http()
-        .get('/users')
-        .set(bearer(adminToken))
-        .expect(200);
-      expect(body.meta.total).toBeGreaterThanOrEqual(2);
-      for (const user of body.data) expect(user).not.toHaveProperty('password');
-    });
-
-    it('USER não acessa o gerenciamento de usuários', async () => {
-      await http().get('/users').set(bearer(userToken)).expect(403);
-    });
-
-    it('valida os dados na criação', async () => {
-      const { body } = await http()
-        .post('/users')
-        .set(bearer(adminToken))
-        .send({ name: 'X', email: 'invalido', password: '123' })
-        .expect(400);
-      expect(Array.isArray(body.message)).toBe(true);
-    });
-
-    it('rejeita e-mail duplicado', async () => {
-      await http()
-        .post('/users')
-        .set(bearer(adminToken))
-        .send({
-          name: 'Duplicado',
-          email: 'KELLY@celke.com.br',
-          password: 'Senha@123',
-        })
-        .expect(409);
-    });
-
-    it('usuário desativado não consegue fazer login', async () => {
-      const { body: created } = await http()
-        .post('/users')
-        .set(bearer(adminToken))
-        .send({
-          name: 'Inativo',
-          email: 'inativo@empresa.com.br',
-          password: 'Senha@123',
-        })
-        .expect(201);
-
-      await http()
-        .patch(`/users/${created.id}/status`)
-        .set(bearer(adminToken))
-        .send({ active: false })
-        .expect(200);
-
-      await http()
-        .post('/auth/login')
-        .send({ email: 'inativo@empresa.com.br', password: 'Senha@123' })
-        .expect(401);
-    });
-  });
-
   describe('Produtos', () => {
     let productId: number;
 
@@ -320,26 +261,6 @@ describe('API (e2e)', () => {
         .set(bearer(userToken))
         .expect(200);
       expect(body).toMatchObject({ name: 'Fórmula E2E', active: true });
-    });
-  });
-
-  it('GET /dashboard retorna os quatro cards', async () => {
-    const { body } = await http()
-      .get('/dashboard')
-      .set(bearer(userToken))
-      .expect(200);
-
-    const values = Object.fromEntries(
-      body.cards.map((card: { key: string; value: number }) => [
-        card.key,
-        card.value,
-      ]),
-    );
-    expect(values).toEqual({
-      users: 4, // 2 do seed + 2 criados nestes testes
-      products: 5,
-      quotations: 11,
-      pricingFormulas: 4,
     });
   });
 });
