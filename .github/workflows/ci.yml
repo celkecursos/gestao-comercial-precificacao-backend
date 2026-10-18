@@ -1,0 +1,148 @@
+# Integração contínua da API: qualidade (lint, formatação, build, unitários com cobertura),
+# testes e2e contra um MySQL real e conferência de migrations pendentes.
+# Os jobs com banco usam um MySQL descartável (service do GitHub Actions): o banco nasce e
+# morre com o job. Nada aqui toca os ambientes develop/homolog/produção, e as credenciais
+# abaixo são fictícias, válidas só dentro do runner — não são segredos de nenhum ambiente.
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, homolog, main]
+  push:
+    branches: [develop, homolog, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, build e unitários
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Formatação
+        run: npm run format:check
+
+      - name: Build
+        run: npm run build
+
+      - name: Testes unitários com cobertura
+        run: npm run test:cov
+
+      - name: Publicar relatório de cobertura
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 14
+
+  e2e:
+    name: Testes e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root_ci_password
+          TZ: UTC
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot_ci_password --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      # O globalSetup do e2e cria, apaga e recria DB_TEST_DATABASE (migrations + seed).
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USERNAME: root
+      DB_PASSWORD: root_ci_password
+      DB_DATABASE: gestao_comercial
+      DB_TEST_DATABASE: gestao_comercial_test
+      JWT_SECRET: ci-segredo-somente-para-testes-automatizados
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Rodar os testes e2e
+        run: npm run test:e2e
+
+  migrations:
+    name: Migrations em dia com as entidades
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root_ci_password
+          TZ: UTC
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot_ci_password --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USERNAME: root
+      DB_PASSWORD: root_ci_password
+      DB_DATABASE: gestao_comercial
+      JWT_SECRET: ci-segredo-somente-para-testes-automatizados
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      # Cria o banco com o mesmo charset/collation do ambiente local (utf8mb4_unicode_ci).
+      - name: Criar o banco
+        run: npm run db:create
+
+      - name: Aplicar as migrations
+        run: npm run migration:run
+
+      # Falha se alguma entidade mudou sem a migration correspondente.
+      - name: Conferir mudanças de entidade sem migration
+        run: npm run migration:generate -- src/database/migrations/Check --check
