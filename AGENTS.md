@@ -51,4 +51,4 @@ E, se houver alteração de entidades, quando `npm run typeorm -- migration:gene
 
 ## Funcionalidades pendentes
 
-A **recuperação de senha** ainda não existe e é uma tarefa planejada — veja `docs/ROADMAP.md`.
+Veja `docs/ROADMAP.md`. A **recuperação de senha** já existe (`PasswordResetService`); para enviar outros e-mails, use `MailService` (`src/mail/`), nunca o nodemailer direto.
