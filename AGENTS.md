@@ -24,7 +24,7 @@ npm run test:e2e
 npm run build
 ```
 
-E, se houver alteração de entidades, quando `npm run typeorm -- migration:generate src/database/migrations/Check --dryrun` responder que não há mudanças pendentes.
+E, se houver alteração de entidades, quando `npm run typeorm -- migration:generate src/database/migrations/Check --check` passar (sem mudanças pendentes; é o que o CI confere).
 
 ## Padrões de código
 
