@@ -50,6 +50,12 @@ export class UsersService {
     return user;
   }
 
+  findByEmail(email: string): Promise<User | null> {
+    return this.usersRepository.findOneBy({
+      email: email.trim().toLowerCase(),
+    });
+  }
+
   /** Retorna o usuário com o hash da senha (usado apenas na autenticação). */
   findByEmailWithPassword(email: string): Promise<User | null> {
     return this.usersRepository

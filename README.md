@@ -46,6 +46,8 @@ A aplicação é hospedada na **Hostinger** (Hostinger Web Application Hosting),
 | ORM             | TypeORM 0.3 (entidades + migrations versionadas)  |
 | Autenticação    | JWT (`@nestjs/jwt` + Passport) e bcrypt           |
 | Validação       | class-validator / class-transformer               |
+| E-mail          | nodemailer (SMTP de qualquer provedor)            |
+| Limite de taxa  | `@nestjs/throttler`                               |
 | Documentação    | Swagger / OpenAPI (`@nestjs/swagger`)             |
 | Testes          | Jest + Supertest                                  |
 | Qualidade       | ESLint + Prettier                                 |
@@ -93,6 +95,16 @@ O `.env` **nunca** é versionado. Todas as variáveis estão documentadas no `.e
 | `JWT_SECRET`         | Segredo de assinatura do JWT (**mínimo 32 caracteres**)                | —                       |
 | `JWT_EXPIRES_IN`     | Validade do token (`1d`, `12h`, `3600`...)                             | `1d`                    |
 | `BCRYPT_SALT_ROUNDS` | Custo do hash de senha (10–15)                                         | `10`                    |
+| `TRUST_PROXY`        | Nº de proxies reversos na frente da API (define o IP real do cliente)  | `1`                     |
+| `MAIL_DRIVER`        | `log` (só registra no log) ou `smtp` (envia)                           | `log`                   |
+| `SMTP_HOST`          | Servidor SMTP (obrigatório com `smtp`)                                 | —                       |
+| `SMTP_PORT`          | Porta SMTP: `465` ou `587` (obrigatório com `smtp`)                    | —                       |
+| `SMTP_SECURE`        | `true` para TLS direto (465), `false` para STARTTLS (587) (idem)       | —                       |
+| `SMTP_USER`          | Usuário SMTP (obrigatório com `smtp`)                                  | —                       |
+| `SMTP_PASSWORD`      | Senha SMTP (obrigatório com `smtp`)                                    | —                       |
+| `MAIL_FROM`          | Endereço do remetente (obrigatório com `smtp`)                         | —                       |
+| `MAIL_FROM_NAME`     | Nome exibido do remetente                                              | `Gestão Comercial e Precificação` |
+| `PASSWORD_RESET_URL` | Tela do frontend que recebe `?token=` (obrigatório com `smtp`)         | `http://localhost:5173/redefinir-senha` |
 
 Gere um `JWT_SECRET` forte com:
 
@@ -199,7 +211,7 @@ npm run lint         # ESLint
 
 Os testes **e2e** usam o banco `DB_TEST_DATABASE`, que é **apagado e recriado** (migrations + seed) a cada execução — nunca aponte para o banco principal (a suíte se recusa a rodar se os nomes forem iguais).
 
-Cobertura atual: autenticação (login, logout, perfil, troca de senha), criação e validação de usuários, permissões por papel, produtos, cotações (filtros, datas, duplicidade), fórmulas, cálculo de preço e dashboard.
+Cobertura atual: autenticação (login, logout, perfil, troca e recuperação de senha, limite de pedidos), criação e validação de usuários, permissões por papel, produtos, cotações (filtros, datas, duplicidade), fórmulas, cálculo de preço e dashboard.
 
 ## Swagger / OpenAPI
 
@@ -214,9 +226,12 @@ Em produção, desative com `SWAGGER_ENABLED=false` se não quiser a documentaç
 
 ```text
 src/
-├── auth/                  # Login, logout, /me, perfil e troca de senha (JWT)
+├── auth/                  # Login, logout, /me, perfil, troca e recuperação de senha (JWT)
 │   ├── dto/
+│   ├── entities/          # Tokens de redefinição de senha
+│   ├── mail/              # E-mail de redefinição (HTML + texto)
 │   └── strategies/        # Estratégia Passport JWT
+├── mail/                  # MailService (contrato) + nodemailer (drivers log e smtp)
 ├── users/                 # CRUD de usuários (somente ADMIN)
 ├── products/              # CRUD de produtos
 ├── quotations/            # Cotações diárias
@@ -255,11 +270,13 @@ Cada módulo segue o mesmo padrão: `controller` (somente HTTP) → `service` (r
 
 ## Principais endpoints
 
-Todas as rotas exigem `Authorization: Bearer <token>`, exceto `POST /auth/login` e `GET /health`.
+Todas as rotas exigem `Authorization: Bearer <token>`, exceto `POST /auth/login`, `POST /auth/forgot-password`, `POST /auth/reset-password` e `GET /health`.
 
 | Método   | Rota                            | Descrição                                          | Acesso        |
 | -------- | ------------------------------- | -------------------------------------------------- | ------------- |
 | `POST`   | `/auth/login`                   | Login (retorna JWT)                                | Público       |
+| `POST`   | `/auth/forgot-password`         | Pede o link de redefinição de senha por e-mail     | Público       |
+| `POST`   | `/auth/reset-password`          | Define a nova senha com o token do e-mail          | Público       |
 | `POST`   | `/auth/logout`                  | Encerra a sessão (invalida os tokens do usuário)   | Autenticado   |
 | `GET`    | `/auth/me`                      | Usuário autenticado                                | Autenticado   |
 | `PATCH`  | `/auth/profile`                 | Atualiza nome/e-mail do próprio usuário            | Autenticado   |
@@ -332,16 +349,48 @@ Novos papéis podem ser adicionados em `src/common/enums/role.enum.ts` e aplicad
 
 ## Recuperação de senha
 
-> **Esta funcionalidade ainda não foi implementada.**
+"Esqueci minha senha" por e-mail, em duas rotas públicas:
 
-A recuperação de senha por e-mail ("Esqueci minha senha") será adicionada posteriormente como uma **tarefa de desenvolvimento através do Paperclip**, executada por um agente de IA.
+1. **`POST /auth/forgot-password`** `{ "email": "..." }` — responde **sempre `204`**, exista ou não um usuário ativo com o e-mail (a API não revela quais e-mails estão cadastrados). Se existir, envia um e-mail com o link `PASSWORD_RESET_URL?token=...`.
+2. **`POST /auth/reset-password`** `{ "token": "...", "newPassword": "..." }` — grava a nova senha (mesma política de senha forte do cadastro) e responde `204`. Todos os tokens JWT emitidos antes deixam de valer. Token inválido, expirado ou já usado responde `400` com a mesma mensagem.
 
-Hoje o sistema oferece apenas:
+Regras:
 
-- troca da própria senha por um usuário autenticado (`PATCH /auth/password`);
-- redefinição da senha de um usuário por um ADMIN (`PATCH /users/:id` com `password`).
+- o link vale por **1 hora** e pode ser usado **uma única vez**; um pedido novo invalida os links anteriores;
+- o banco guarda só o hash (SHA-256) do token, nunca o token em si;
+- **limite de pedidos**: 10 por IP e 3 por e-mail a cada 15 minutos; acima disso, `429` com o cabeçalho `Retry-After`. O IP é o do cliente, mesmo atrás do proxy da hospedagem (`TRUST_PROXY`). Os contadores ficam em memória — reiniciar a API os zera;
+- continuam valendo a troca da própria senha (`PATCH /auth/password`) e a redefinição por um ADMIN (`PATCH /users/:id` com `password`).
 
-A base já está preparada para essa funcionalidade — veja os pontos de extensão em [docs/ROADMAP.md](docs/ROADMAP.md#recuperação-de-senha-por-e-mail).
+O frontend precisa de uma tela no endereço de `PASSWORD_RESET_URL` que leia o parâmetro `token` da URL e chame `POST /auth/reset-password`.
+
+### Em desenvolvimento: driver `log`
+
+Com `MAIL_DRIVER=log` (padrão), nada é enviado: o e-mail aparece no log da API, com o link pronto para abrir no navegador. É o modo de desenvolvimento, testes e CI — não precisa de nenhuma outra variável.
+
+### Em homolog e produção: configurar o SMTP
+
+O envio usa SMTP com [nodemailer](https://nodemailer.com/), sem código específico de provedor: trocar de provedor ou de remetente é só trocar as variáveis no painel da hospedagem.
+
+```env
+MAIL_DRIVER=smtp
+SMTP_HOST=smtp.hostinger.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=no-reply@seudominio.com.br
+SMTP_PASSWORD=<senha da caixa de e-mail>
+MAIL_FROM=no-reply@seudominio.com.br
+MAIL_FROM_NAME=Gestão Comercial e Precificação
+PASSWORD_RESET_URL=https://front.uno.com/redefinir-senha
+```
+
+- Com `MAIL_DRIVER=smtp`, as variáveis `SMTP_*`, `MAIL_FROM` e `PASSWORD_RESET_URL` são **obrigatórias**: se faltar alguma, a aplicação não sobe e o log diz qual (sem exibir a senha).
+- **Porta e `SMTP_SECURE`**: `465` + `true` (TLS direto) ou `587` + `false` (STARTTLS). Use os valores que o provedor indicar. Exemplos de servidor: Hostinger `smtp.hostinger.com`, Gmail/Google Workspace `smtp.gmail.com` (com senha de app), Amazon SES `email-smtp.<região>.amazonaws.com`.
+- **Remetente**: use em `MAIL_FROM` um endereço do mesmo domínio da conta SMTP (em geral o próprio `SMTP_USER`) e configure SPF/DKIM do domínio no provedor, para que o e-mail não caia no spam.
+- **`PASSWORD_RESET_URL`** é a tela de redefinição do frontend **de cada ambiente** (develop, homolog, produção). Não confunda com `FRONTEND_URL`, que é a lista de origens do CORS.
+- Se a hospedagem tiver mais de um proxy na frente da API (ex.: uma CDN antes do proxy da Hostinger), ajuste `TRUST_PROXY` para o número de proxies; senão, o limite por IP passa a contar o IP do proxy e não o do cliente.
+- Se o envio falhar (SMTP fora do ar, senha errada), a rota continua respondendo `204` e o erro aparece no log da API como `Falha ao processar um pedido de redefinição de senha`.
+
+Para testar a configuração, faça um pedido para o seu próprio e-mail em `POST /auth/forgot-password` pelo Swagger e confira a caixa de entrada (e o log da API, se não chegar).
 
 ## Ambientes e branches
 
@@ -387,7 +436,18 @@ A aplicação é um app Node.js padrão, compatível com o **Hostinger Web Appli
    JWT_EXPIRES_IN=1d
    FRONTEND_URL=https://front.uno.com
    SWAGGER_ENABLED=true
+   TRUST_PROXY=1
+   MAIL_DRIVER=smtp
+   SMTP_HOST=<servidor SMTP>
+   SMTP_PORT=465
+   SMTP_SECURE=true
+   SMTP_USER=<usuario SMTP>
+   SMTP_PASSWORD=<senha SMTP>
+   MAIL_FROM=<remetente, ex.: no-reply@seudominio.com.br>
+   MAIL_FROM_NAME=Gestão Comercial e Precificação
+   PASSWORD_RESET_URL=https://front.uno.com/redefinir-senha
    ```
+   Detalhes do e-mail em [Recuperação de senha](#em-homolog-e-produção-configurar-o-smtp).
    A porta (`PORT`) normalmente é fornecida pela plataforma.
 3. **Build e start**:
    - Configuração predefinida: **NestJS**
@@ -433,9 +493,9 @@ Regras de segurança:
 - a senha fica apenas nas variáveis de ambiente da hospedagem, nunca no código ou no GitHub;
 - se apenas parte das variáveis for informada, ou se a senha não atender à política de senha forte, a aplicação não sobe e o log indica o problema (sem exibir a senha);
 - se o e-mail já pertencer a um usuário comum, a aplicação não sobe em vez de promovê-lo a administrador;
-- não é um mecanismo de recuperação de senha: só atua enquanto não existe nenhum administrador.
+- não é um mecanismo de recuperação de senha (para isso, veja [Recuperação de senha](#recuperação-de-senha)): só atua enquanto não existe nenhum administrador.
 
-Checklist de segurança para produção: `JWT_SECRET` exclusivo e forte, `DB_SEED_ON_STARTUP=false`, variáveis `ADMIN_*` removidas após o primeiro acesso, `FRONTEND_URL` restrito aos domínios reais e HTTPS habilitado.
+Checklist de segurança para produção: `JWT_SECRET` exclusivo e forte, `DB_SEED_ON_STARTUP=false`, variáveis `ADMIN_*` removidas após o primeiro acesso, `FRONTEND_URL` restrito aos domínios reais, `MAIL_DRIVER=smtp` com `PASSWORD_RESET_URL` apontando para o frontend de produção e HTTPS habilitado.
 
 ## Scripts disponíveis
 

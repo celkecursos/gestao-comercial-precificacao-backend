@@ -17,9 +17,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 
 /**
  * Regras de autenticação e de gerenciamento da própria conta.
- *
- * Futuras funcionalidades de conta (ex.: recuperação de senha por e-mail) devem ser
- * adicionadas neste módulo, reutilizando `UsersService.updatePassword()`.
+ * A recuperação de senha por e-mail fica em `PasswordResetService`.
  */
 @Injectable()
 export class AuthService {

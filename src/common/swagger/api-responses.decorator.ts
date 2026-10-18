@@ -14,6 +14,8 @@ const ERROR_DESCRIPTIONS: Partial<Record<HttpStatus, string>> = {
   [HttpStatus.FORBIDDEN]: 'Sem permissão para o recurso',
   [HttpStatus.NOT_FOUND]: 'Registro não encontrado',
   [HttpStatus.CONFLICT]: 'Conflito com dados existentes',
+  [HttpStatus.TOO_MANY_REQUESTS]:
+    'Muitas tentativas; aguarde e tente novamente (ver cabeçalho Retry-After)',
 };
 
 /** Documenta no Swagger as respostas de erro informadas, todas no formato ErrorResponseDto. */

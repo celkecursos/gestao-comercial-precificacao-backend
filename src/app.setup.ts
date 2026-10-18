@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { Application } from 'express';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { EnvironmentVariables } from './config/env.validation';
 
@@ -17,6 +18,12 @@ export const SWAGGER_PATH = 'api/docs';
  */
 export function configureApp(app: INestApplication): void {
   const config = app.get(ConfigService<EnvironmentVariables, true>);
+
+  // IP real do cliente atrás do proxy da hospedagem (`req.ip`, usado no limite de tentativas).
+  (app.getHttpAdapter().getInstance() as Application).set(
+    'trust proxy',
+    config.get('TRUST_PROXY', { infer: true }),
+  );
 
   app.enableCors({
     origin: parseOrigins(config.get('FRONTEND_URL', { infer: true })),
