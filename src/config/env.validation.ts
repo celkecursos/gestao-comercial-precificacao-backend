@@ -6,6 +6,7 @@ import {
   IsInt,
   IsNotEmpty,
   IsString,
+  IsUrl,
   Length,
   Matches,
   Max,
@@ -30,11 +31,40 @@ const optionalText = ({ value }: { value: unknown }) =>
 const hasInitialAdmin = (env: EnvironmentVariables) =>
   Boolean(env.ADMIN_NAME || env.ADMIN_EMAIL || env.ADMIN_PASSWORD);
 
+/** Segredos não são aparados (um espaço pode fazer parte da senha); vazio conta como "não informado". */
+const optionalSecret = ({ value }: { value: unknown }) =>
+  typeof value === 'string' && value !== '' ? value : undefined;
+
+/** Número opcional: vazio conta como "não informado"; o restante é convertido para o validador conferir. */
+const optionalNumber = ({ value }: { value: unknown }) =>
+  value === undefined || value === '' ? undefined : Number(value);
+
+/** Com MAIL_DRIVER=smtp, as variáveis SMTP_* e MAIL_FROM são obrigatórias. */
+const usesSmtp = (env: EnvironmentVariables) =>
+  env.MAIL_DRIVER === MailDriver.Smtp;
+
+const requiredForSmtp = (name: string) =>
+  `${name} é obrigatório quando MAIL_DRIVER=smtp.`;
+
 export enum Environment {
   Development = 'development',
   Production = 'production',
   Test = 'test',
 }
+
+/**
+ * Como os e-mails são entregues:
+ * - `log`: não envia; registra o e-mail no log da aplicação (desenvolvimento, testes e CI);
+ * - `smtp`: envia pelo servidor SMTP configurado em SMTP_* (homolog e produção).
+ */
+export enum MailDriver {
+  Log = 'log',
+  Smtp = 'smtp',
+}
+
+/** Endereço da tela de redefinição de senha usado quando PASSWORD_RESET_URL não é informado (driver `log`). */
+export const DEFAULT_PASSWORD_RESET_URL =
+  'http://localhost:5173/redefinir-senha';
 
 /**
  * Todas as variáveis de ambiente aceitas pela aplicação.
@@ -146,6 +176,94 @@ export class EnvironmentVariables {
   @Transform(toBoolean)
   @IsBoolean()
   SWAGGER_ENABLED = true;
+
+  /**
+   * Quantos proxies reversos ficam entre o cliente e a API (Express `trust proxy`).
+   * Com 1 (padrão — o proxy da hospedagem), o IP do cliente vem do `X-Forwarded-For`
+   * adicionado por esse proxy; é o IP usado no limite de tentativas. 0 = sem proxy.
+   */
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  TRUST_PROXY = 1;
+
+  @IsEnum(MailDriver, { message: 'MAIL_DRIVER deve ser "log" ou "smtp".' })
+  MAIL_DRIVER: MailDriver = MailDriver.Log;
+
+  @Transform(optionalText)
+  @ValidateIf(usesSmtp)
+  @IsString({ message: requiredForSmtp('SMTP_HOST') })
+  SMTP_HOST?: string;
+
+  @Transform(optionalNumber)
+  @ValidateIf(usesSmtp)
+  @IsInt({ message: requiredForSmtp('SMTP_PORT') })
+  @Min(1)
+  @Max(65535)
+  SMTP_PORT?: number;
+
+  /** `true` para TLS direto (porta 465); `false` para STARTTLS (porta 587). */
+  @Transform((params) => toBoolean({ ...params, value: optionalText(params) }))
+  @ValidateIf(usesSmtp)
+  @IsBoolean({
+    message: `${requiredForSmtp('SMTP_SECURE')} Use true ou false.`,
+  })
+  SMTP_SECURE?: boolean;
+
+  @Transform(optionalText)
+  @ValidateIf(usesSmtp)
+  @IsString({ message: requiredForSmtp('SMTP_USER') })
+  SMTP_USER?: string;
+
+  @Transform(optionalSecret)
+  @ValidateIf(usesSmtp)
+  @IsString({ message: requiredForSmtp('SMTP_PASSWORD') })
+  SMTP_PASSWORD?: string;
+
+  /** Endereço do remetente dos e-mails. */
+  @Transform(optionalText)
+  @ValidateIf(
+    (env: EnvironmentVariables) => usesSmtp(env) || env.MAIL_FROM !== undefined,
+  )
+  @IsEmail(
+    {},
+    {
+      message:
+        'MAIL_FROM deve ser um e-mail válido (obrigatório quando MAIL_DRIVER=smtp).',
+    },
+  )
+  MAIL_FROM?: string;
+
+  /** Nome exibido como remetente. */
+  @Transform(optionalText)
+  @ValidateIf((env: EnvironmentVariables) => env.MAIL_FROM_NAME !== undefined)
+  @Length(1, 120, {
+    message: 'MAIL_FROM_NAME deve ter entre 1 e 120 caracteres.',
+  })
+  MAIL_FROM_NAME?: string;
+
+  /**
+   * Endereço da tela do frontend que recebe o token (`?token=...`) e define a nova senha.
+   * Obrigatório com MAIL_DRIVER=smtp; com `log`, o padrão é DEFAULT_PASSWORD_RESET_URL.
+   */
+  @Transform(optionalText)
+  @ValidateIf(
+    (env: EnvironmentVariables) =>
+      usesSmtp(env) || env.PASSWORD_RESET_URL !== undefined,
+  )
+  @IsUrl(
+    {
+      require_tld: false,
+      require_protocol: true,
+      protocols: ['http', 'https'],
+    },
+    {
+      message:
+        'PASSWORD_RESET_URL deve ser uma URL http(s) válida (obrigatória quando MAIL_DRIVER=smtp).',
+    },
+  )
+  PASSWORD_RESET_URL?: string;
 }
 
 export function validateEnv(

@@ -1,28 +1,6 @@
 # Roadmap
 
-Funcionalidades planejadas e ainda **não implementadas**.
-
-## Recuperação de senha por e-mail
-
-**Status:** não implementada — será desenvolvida como tarefa no Paperclip.
-
-**Objetivo:** permitir que um usuário que esqueceu a senha solicite um link de redefinição por e-mail e defina uma nova senha sem estar autenticado.
-
-**O que a base já oferece:**
-
-- `UsersService.updatePassword(id, newPassword)` — ponto único para gravar uma nova senha (faz o hash e invalida os tokens existentes).
-- `@IsStrongPassword()` (`common/validators`) — mesma política de senha usada no cadastro e na troca de senha.
-- `@Public()` — para expor rotas sem autenticação.
-- `AuthModule` — local indicado para as novas rotas e regras.
-- Formato padrão de erros, Swagger, migrations e testes e2e prontos para receber a nova funcionalidade.
-
-**O que ainda não existe (a ser criado pela tarefa):**
-
-- serviço de envio de e-mail e sua configuração (variáveis no `.env.example`);
-- armazenamento de tokens de redefinição (entidade + migration), com expiração e uso único;
-- endpoints públicos de solicitação e de redefinição;
-- testes unitários e e2e do fluxo;
-- documentação no README e no Swagger.
+Funcionalidades planejadas e ainda **não implementadas**. As já entregues estão em [Concluído](#concluído), no fim.
 
 ## Integração com a LME
 
@@ -35,3 +13,17 @@ Evoluir o `PricingCalculationService` para usar cotações cadastradas, componen
 ## Contratos de hedge
 
 Novo módulo para registrar contratos de hedge e considerá-los na formação de preços.
+
+## Concluído
+
+### Recuperação de senha por e-mail
+
+**Status:** implementada. Uso e configuração do SMTP no [README](../README.md#recuperação-de-senha).
+
+- `POST /auth/forgot-password` e `POST /auth/reset-password` (públicas), em `src/auth/` (`PasswordResetService`).
+- Token aleatório gravado só como hash SHA-256 (`password_reset_tokens`), válido por 1 hora, de uso único; um pedido novo invalida os anteriores.
+- A nova senha é gravada por `UsersService.updatePassword()`, que invalida os JWT já emitidos.
+- Limite de pedidos por IP real (atrás do proxy, `TRUST_PROXY`) e por e-mail (`@nestjs/throttler`, em memória).
+- Envio atrás da interface `MailService` (`src/mail/`), com nodemailer: driver `log` (desenvolvimento, testes e CI) e `smtp` (homolog e produção).
+
+**Evoluções possíveis:** contadores do limite num armazenamento compartilhado (ex.: Redis) se a API passar a rodar em mais de uma instância; limpeza periódica dos tokens expirados.

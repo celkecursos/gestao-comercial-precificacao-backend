@@ -24,6 +24,7 @@ export function createRepositoryMock<
     update: jest.fn(),
     increment: jest.fn(),
     remove: jest.fn(),
+    delete: jest.fn(),
     createQueryBuilder: jest.fn(),
   };
 }
